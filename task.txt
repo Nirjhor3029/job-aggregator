@@ -1,0 +1,36 @@
+Simple API Key System
+Mongo Schema
+{
+  name: "Frontend App",
+  apiKey: "hashed_key",
+  active: true,
+  rateLimit: 1000,
+  createdAt: Date
+}
+Client Usage
+GET /api/jobs?page=1
+x-api-key: sk_live_xxxxx
+Middleware
+const key = req.headers['x-api-key'];
+
+if (!key) {
+  return res.status(401).json({
+    error: 'API key required'
+  });
+}
+Security Best Practices
+1. Hash API keys
+
+Never store raw key.
+
+Like password:
+
+sha256(apiKey)
+2. Different rate limits
+
+Example:
+
+Tier	Limit
+Anonymous	30/min
+Free Key	300/min
+Paid	5000/min

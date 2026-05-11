@@ -8,18 +8,36 @@ Default PORT: `3000`
 
 ---
 
-## Rate Limiting
-- All `/api/*` endpoints are rate-limited
-- **Limit**: 100 requests per 15 minutes
-- **Response on limit**: `HTTP 429`
+## Authentication
+
+### API Key System
+API keys are optional but provide higher rate limits. Pass the key in the `x-api-key` header:
+
+```
+GET /api/jobs?page=1
+x-api-key: sk_live_xxxxx
+```
+
+### Rate Limit Tiers
+
+| Tier | Requests/Min | Key Required |
+|------|-------------|--------------|
+| `anonymous` | 30 | No |
+| `free` | 300 | Yes |
+| `paid` | 5000 | Yes |
+
+### Response on Rate Limit (`HTTP 429`):
 ```json
-{ "error": "Too many requests, please try again later." }
+{ "error": "Rate limit exceeded. Tier 'anonymous' is limited to 30 requests per minute." }
 ```
 
 ---
 
-## Authentication
-**No authentication required.** All endpoints are publicly accessible.
+## Security Implementation
+- **API keys hashed with SHA-256** before storage (like passwords)
+- Raw keys only shown **once** at generation time
+- Inactive keys are automatically rejected
+- Rate limits tracked by key ID (not IP) for authenticated users
 
 ---
 
@@ -94,11 +112,6 @@ List jobs with filtering, sorting, and pagination.
 }
 ```
 
-**Response `500`:**
-```json
-{ "error": "error message" }
-```
-
 ---
 
 #### `GET /api/jobs/stats` — Job Statistics
@@ -133,11 +146,6 @@ Dedicated full-text search endpoint.
   "jobs": [/* matching jobs */],
   "count": 5
 }
-```
-
-**Response `400` (query too short):**
-```json
-{ "error": "Search query must be at least 2 characters" }
 ```
 
 ---
@@ -188,7 +196,118 @@ Get a job by MongoDB ObjectId.
 
 ---
 
-## Data Model: Job
+### API Key Management
+
+#### `POST /api/apikeys/generate` — Generate API Key
+Create a new API key. **Save the returned key - it will not be shown again.**
+
+**Request Body:**
+```json
+{
+  "name": "Frontend App",
+  "tier": "free"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | **Yes** | Name for the key (for your reference) |
+| `tier` | string | No | `free` (default) or `paid` |
+
+**Response `201`:**
+```json
+{
+  "message": "API key generated successfully. Save this key - it will not be shown again.",
+  "data": {
+    "_id": "6789abcdef0123456789abcd",
+    "name": "Frontend App",
+    "tier": "free",
+    "rateLimit": 300,
+    "active": true,
+    "key": "sk_live_a1b2c3d4e5f6...",
+    "createdAt": "2026-05-11T12:00:00.000Z"
+  }
+}
+```
+
+---
+
+#### `GET /api/apikeys` — List All API Keys
+List all API keys (does not show key values).
+
+**Response `200`:**
+```json
+{
+  "count": 2,
+  "keys": [
+    {
+      "_id": "6789abcdef0123456789abcd",
+      "name": "Frontend App",
+      "tier": "free",
+      "rateLimit": 300,
+      "active": true,
+      "lastUsedAt": "2026-05-11T12:00:00.000Z",
+      "createdAt": "2026-05-10T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+#### `PUT /api/apikeys/:id/activate` — Activate Key
+Enable a previously deactivated key.
+
+**Response `200`:**
+```json
+{
+  "message": "API key activated",
+  "data": {
+    "_id": "6789abcdef0123456789abcd",
+    "name": "Frontend App",
+    "active": true
+  }
+}
+```
+
+---
+
+#### `PUT /api/apikeys/:id/deactivate` — Deactivate Key
+Disable a key (key validation will fail).
+
+**Response `200`:**
+```json
+{
+  "message": "API key deactivated",
+  "data": {
+    "_id": "6789abcdef0123456789abcd",
+    "name": "Frontend App",
+    "active": false
+  }
+}
+```
+
+---
+
+#### `DELETE /api/apikeys/:id` — Delete Key
+Permanently remove a key.
+
+**Response `200`:**
+```json
+{
+  "message": "API key deleted",
+  "data": {
+    "_id": "6789abcdef0123456789abcd",
+    "name": "Frontend App"
+  }
+}
+```
+
+---
+
+## Data Models
+
+### Job
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -212,6 +331,20 @@ Get a job by MongoDB ObjectId.
 | `hash` | String | No | Deduplication hash |
 | `createdAt` | Date | Auto | Record creation timestamp |
 
+### ApiKey
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `_id` | ObjectId | MongoDB document ID |
+| `name` | String | Reference name for the key |
+| `apiKey` | String | **SHA-256 hashed** key (never stored raw) |
+| `tier` | String | `anonymous`, `free`, or `paid` |
+| `rateLimit` | Number | Requests per window |
+| `rateLimitWindowMs` | Number | Window in milliseconds (default: 60000) |
+| `active` | Boolean | Whether the key is enabled |
+| `lastUsedAt` | Date | Last successful validation |
+| `createdAt` | Date | Creation timestamp |
+
 ---
 
 ## Environment Variables
@@ -233,5 +366,8 @@ Get a job by MongoDB ObjectId.
 | `GET` | `/api/jobs/stats` | Job counts by source |
 | `GET` | `/api/jobs/search` | Full-text search |
 | `GET` | `/api/jobs/:id` | Get job by ID |
-
-**Note:** All endpoints are read-only (GET only). No POST/PUT/DELETE endpoints.
+| `POST` | `/api/apikeys/generate` | Generate new API key |
+| `GET` | `/api/apikeys` | List all keys |
+| `PUT` | `/api/apikeys/:id/activate` | Activate key |
+| `PUT` | `/api/apikeys/:id/deactivate` | Deactivate key |
+| `DELETE` | `/api/apikeys/:id` | Delete key |
