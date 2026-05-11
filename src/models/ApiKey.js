@@ -38,7 +38,6 @@ const apiKeySchema = new mongoose.Schema({
   }
 });
 
-apiKeySchema.index({ apiKey: 1 });
 apiKeySchema.index({ active: 1 });
 
 function hashApiKey(key) {

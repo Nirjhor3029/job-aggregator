@@ -17,6 +17,17 @@ const TIER_LIMITS = {
   }
 };
 
+function normalizeIp(ip) {
+  if (!ip) return 'unknown';
+  if (ip.startsWith('::ffff:')) {
+    return ip.substring(7);
+  }
+  if (ip === '::1') {
+    return '127.0.0.1';
+  }
+  return ip;
+}
+
 const tieredLimiter = rateLimit({
   windowMs: DEFAULT_WINDOW_MS,
   max: (req) => {
@@ -37,26 +48,16 @@ const tieredLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: false,
   keyGenerator: (req) => {
     if (req.apiKey && req.apiKey._id) {
       return `key_${req.apiKey._id.toString()}`;
     }
-    return `ip_${req.ip}`;
+    return `ip_${normalizeIp(req.ip)}`;
   }
-});
-
-const globalApiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10000,
-  message: {
-    error: 'Too many requests, please try again later.'
-  },
-  standardHeaders: true,
-  legacyHeaders: false
 });
 
 module.exports = {
   tieredLimiter,
-  globalApiLimiter,
   TIER_LIMITS
 };
